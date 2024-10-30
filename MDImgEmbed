@@ -1,0 +1,58 @@
+import os
+import base64
+import re
+import argparse
+
+# Define your Obsidian vault path
+def convert_image_to_base64(image_path):
+    with open(image_path, "rb") as image_file:
+        base64_string = base64.b64encode(image_file.read()).decode('utf-8')
+    return base64_string
+
+def embed_images_in_md(md_path):
+    with open(md_path, 'r', encoding='utf-8') as file:
+        content = file.read()
+
+    modified = False
+
+    # Regex to find markdown image links ![alt text](image/path.jpg)
+    image_links = re.findall(r'!\[(.*?)\]\((.*?)\)', content)
+    md_directory = os.path.dirname(md_path)
+    
+    for alt_text, image_path in image_links:
+        if not image_path.startswith("data:image"):
+            # Decode any URL-encoded characters in the image path (e.g., %20 to space)
+            decoded_image_path = image_path.replace('%20', ' ')
+
+            # Construct the absolute image path based on the markdown file's directory
+            absolute_image_path = os.path.normpath(os.path.join(md_directory, decoded_image_path))
+
+            if os.path.exists(absolute_image_path):
+                image_extension = os.path.splitext(absolute_image_path)[1].lower()[1:]
+                image_data = convert_image_to_base64(absolute_image_path)
+                base64_image = f"data:image/{image_extension};base64,{image_data}"
+                content = content.replace(f"![{alt_text}]({image_path})", f"![{alt_text}]({base64_image})")
+                modified = True
+            else:
+                # Remove the link if the image file does not exist
+                content = content.replace(f"![{alt_text}]({image_path})", "")
+                modified = True
+                print(f"Image not found and link removed: {absolute_image_path}")
+
+    if modified:
+        with open(md_path, 'w', encoding='utf-8') as file:
+            file.write(content)
+        print(f"Updated: {md_path}")
+
+def process_vault(vault_path):
+    for root, dirs, files in os.walk(vault_path):
+        for file in files:
+            if file.endswith(".md"):
+                md_path = os.path.join(root, file)
+                embed_images_in_md(md_path)
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Embed images in markdown files as base64.")
+    parser.add_argument("vault_path", type=str, help="Path to the Obsidian vault.")
+    args = parser.parse_args()
+    process_vault(args.vault_path)
